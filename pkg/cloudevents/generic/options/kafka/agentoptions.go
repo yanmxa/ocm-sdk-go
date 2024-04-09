@@ -62,7 +62,9 @@ func (o *kafkaAgentOptions) Client(ctx context.Context) (cloudevents.Client, err
 		kafka_confluent.WithConfigMap(o.ConfigMap),
 		kafka_confluent.WithReceiverTopics([]string{o.Topics.SourceEvents}),
 		kafka_confluent.WithSenderTopic(o.Topics.AgentEvents),
-		kafka_confluent.WithErrorHandler(o.errorHandler),
+		kafka_confluent.WithErrorHandler(func(ctx context.Context, err kafka.Error) {
+			o.errorChan <- err
+		}),
 	)
 	if err != nil {
 		return nil, err
@@ -72,8 +74,4 @@ func (o *kafkaAgentOptions) Client(ctx context.Context) (cloudevents.Client, err
 
 func (o *kafkaAgentOptions) ErrorChan() <-chan error {
 	return o.errorChan
-}
-
-func (o *kafkaAgentOptions) errorHandler(err kafka.Error) {
-	o.errorChan <- err
 }

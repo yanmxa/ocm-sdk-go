@@ -64,6 +64,10 @@ func BuildKafkaOptionsFromFlags(configPath string) (*KafkaOptions, error) {
 		return nil, fmt.Errorf("bootstrap.servers is required")
 	}
 
+	// TODO: we haven't monitor the producer.Events() chan, enable it might cause memory leak.
+	// enable it along with protocol.Close() to make sure the monitor is released
+	opts.ConfigMap.SetKey("go.delivery.reports", false)
+
 	options := &KafkaOptions{
 		ConfigMap: opts.ConfigMap,
 		Topics: &types.Topics{

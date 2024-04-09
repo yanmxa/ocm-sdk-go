@@ -1,3 +1,8 @@
+/*
+Copyright 2023 The CloudEvents Authors
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package kafka_confluent
 
 import (
@@ -11,8 +16,6 @@ import (
 	"github.com/cloudevents/sdk-go/v2/types"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
-
-//TODO: the implementation will be removed once the this pr is merged: https://github.com/cloudevents/sdk-go/pull/988
 
 // extends the kafka.Message to support the interfaces for the converting it to binding.Message
 type kafkaMessageWriter kafka.Message
@@ -84,14 +87,14 @@ func (b *kafkaMessageWriter) SetAttribute(attribute spec.Attribute, value interf
 			b.removeProperty(contentTypeKey)
 			return nil
 		}
-		_ = b.addProperty(contentTypeKey, value)
+		b.addProperty(contentTypeKey, value)
 	} else {
 		key := prefix + attribute.Name()
 		if value == nil {
 			b.removeProperty(key)
 			return nil
 		}
-		_ = b.addProperty(key, value)
+		b.addProperty(key, value)
 	}
 	return nil
 }

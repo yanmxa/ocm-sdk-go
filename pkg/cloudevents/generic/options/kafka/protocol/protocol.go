@@ -1,7 +1,13 @@
+/*
+ Copyright 2023 The CloudEvents Authors
+ SPDX-License-Identifier: Apache-2.0
+*/
+
 package kafka_confluent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -12,8 +18,6 @@ import (
 
 	cecontext "github.com/cloudevents/sdk-go/v2/context"
 )
-
-//TODO: the implementation will be removed once the this pr is merged: https://github.com/cloudevents/sdk-go/pull/988
 
 var (
 	_ protocol.Sender   = (*Protocol)(nil)
@@ -27,23 +31,24 @@ type Protocol struct {
 
 	consumer             *kafka.Consumer
 	consumerTopics       []string
-	consumerRebalanceCb  kafka.RebalanceCb     // optional
-	consumerPollTimeout  int                   // optional
-	consumerErrorHandler func(err kafka.Error) //optional
+	consumerRebalanceCb  kafka.RebalanceCb                          // optional
+	consumerPollTimeout  int                                        // optional
+	consumerErrorHandler func(ctx context.Context, err kafka.Error) // optional
 	consumerMux          sync.Mutex
+	consumerIncoming     chan *kafka.Message
+	consumerCtx          context.Context
+	consumerCancel       context.CancelFunc
 
 	producer             *kafka.Producer
-	producerDeliveryChan chan kafka.Event // optional
-	producerDefaultTopic string           // optional
+	producerDefaultTopic string // optional
 
-	// receiver
-	incoming chan *kafka.Message
+	closerMux sync.Mutex
 }
 
 func New(opts ...Option) (*Protocol, error) {
 	p := &Protocol{
 		consumerPollTimeout: 100,
-		incoming:            make(chan *kafka.Message),
+		consumerIncoming:    make(chan *kafka.Message),
 	}
 	if err := p.applyOptions(opts...); err != nil {
 		return nil, err
@@ -63,18 +68,32 @@ func New(opts ...Option) (*Protocol, error) {
 				return nil, err
 			}
 			p.producer = producer
-			p.producerDeliveryChan = make(chan kafka.Event)
 		}
 		if p.producer == nil && p.consumer == nil {
-			return nil, fmt.Errorf("at least set one of the receiver or sender topic")
+			return nil, errors.New("at least receiver or sender topic must be set")
 		}
+	}
+	if p.producerDefaultTopic != "" && p.producer == nil {
+		return nil, fmt.Errorf("at least configmap or producer must be set for the sender topic: %s", p.producerDefaultTopic)
+	}
+
+	if len(p.consumerTopics) > 0 && p.consumer == nil {
+		return nil, fmt.Errorf("at least configmap or consumer must be set for the receiver topics: %s", p.consumerTopics)
 	}
 
 	if p.kafkaConfigMap == nil && p.producer == nil && p.consumer == nil {
-		return nil, fmt.Errorf("at least one of the following to initialize the protocol: config, producer, or consumer")
+		return nil, errors.New("at least one of the following to initialize the protocol must be set: config, producer, or consumer")
 	}
-
 	return p, nil
+}
+
+// Events returns the events channel used by Confluent Kafka to deliver the result from a produce, i.e., send, operation.
+// When using this SDK to produce (send) messages, this channel must be monitored to avoid resource leaks and this channel becoming full. See Confluent SDK for Go for details on the implementation.
+func (p *Protocol) Events() (chan kafka.Event, error) {
+	if p.producer == nil {
+		return nil, errors.New("producer not set")
+	}
+	return p.producer.Events(), nil
 }
 
 func (p *Protocol) applyOptions(opts ...Option) error {
@@ -86,13 +105,19 @@ func (p *Protocol) applyOptions(opts ...Option) error {
 	return nil
 }
 
+// Send message by kafka.Producer. You must monitor the Events() channel while using this function.
 func (p *Protocol) Send(ctx context.Context, in binding.Message, transformers ...binding.Transformer) (err error) {
 	if p.producer == nil {
-		return fmt.Errorf("the producer client must not be nil")
+		return errors.New("producer client must be set")
 	}
-	defer func() {
-		_ = in.Finish(err)
-	}()
+
+	p.closerMux.Lock()
+	defer p.closerMux.Unlock()
+	if p.producer.IsClosed() {
+		return errors.New("producer is closed")
+	}
+
+	defer in.Finish(err)
 
 	kafkaMsg := &kafka.Message{
 		TopicPartition: kafka.TopicPartition{
@@ -109,29 +134,22 @@ func (p *Protocol) Send(ctx context.Context, in binding.Message, transformers ..
 		kafkaMsg.Key = []byte(messageKey)
 	}
 
-	err = WriteProducerMessage(ctx, in, kafkaMsg, transformers...)
-	if err != nil {
-		return err
+	if err = WriteProducerMessage(ctx, in, kafkaMsg, transformers...); err != nil {
+		return fmt.Errorf("create producer message: %w", err)
 	}
 
-	err = p.producer.Produce(kafkaMsg, p.producerDeliveryChan)
-	if err != nil {
+	if err = p.producer.Produce(kafkaMsg, nil); err != nil {
 		return err
-	}
-	e := <-p.producerDeliveryChan
-	m := e.(*kafka.Message)
-	if m.TopicPartition.Error != nil {
-		return m.TopicPartition.Error
 	}
 	return nil
 }
 
 func (p *Protocol) OpenInbound(ctx context.Context) error {
 	if p.consumer == nil {
-		return fmt.Errorf("the consumer client must not be nil")
+		return errors.New("the consumer client must be set")
 	}
 	if p.consumerTopics == nil {
-		return fmt.Errorf("the consumer topics must not be nil")
+		return errors.New("the consumer topics must be set")
 	}
 
 	p.consumerMux.Lock()
@@ -151,11 +169,25 @@ func (p *Protocol) OpenInbound(ctx context.Context) error {
 		return err
 	}
 
-	run := true
-	for run {
+	p.closerMux.Lock()
+	p.consumerCtx, p.consumerCancel = context.WithCancel(ctx)
+	defer p.consumerCancel()
+	p.closerMux.Unlock()
+
+	defer func() {
+		if !p.consumer.IsClosed() {
+			logger.Infof("Closing consumer %v", p.consumerTopics)
+			if err = p.consumer.Close(); err != nil {
+				logger.Errorf("failed to close the consumer: %v", err)
+			}
+		}
+		close(p.consumerIncoming)
+	}()
+
+	for {
 		select {
-		case <-ctx.Done():
-			run = false
+		case <-p.consumerCtx.Done():
+			return p.consumerCtx.Err()
 		default:
 			ev := p.consumer.Poll(p.consumerPollTimeout)
 			if ev == nil {
@@ -163,30 +195,27 @@ func (p *Protocol) OpenInbound(ctx context.Context) error {
 			}
 			switch e := ev.(type) {
 			case *kafka.Message:
-				p.incoming <- e
+				p.consumerIncoming <- e
 			case kafka.Error:
 				// Errors should generally be considered informational, the client will try to automatically recover.
 				// But in here, we choose to terminate the application if all brokers are down.
+				logger.Infof("Error %v: %v", e.Code(), e)
 				if p.consumerErrorHandler != nil {
-					p.consumerErrorHandler(e)
+					p.consumerErrorHandler(ctx, e)
 				}
 				if e.Code() == kafka.ErrAllBrokersDown {
-					run = false
+					logger.Error("All broker connections are down")
+					return e
 				}
-			default:
-				fmt.Printf("Ignored %v\n", e)
 			}
 		}
 	}
-
-	logger.Infof("Closing consumer %v", p.consumerTopics)
-	return p.consumer.Close()
 }
 
 // Receive implements Receiver.Receive
 func (p *Protocol) Receive(ctx context.Context) (binding.Message, error) {
 	select {
-	case m, ok := <-p.incoming:
+	case m, ok := <-p.consumerIncoming:
 		if !ok {
 			return nil, io.EOF
 		}
@@ -197,14 +226,22 @@ func (p *Protocol) Receive(ctx context.Context) (binding.Message, error) {
 	}
 }
 
+// Close cleans up resources after use. Must be called to properly close underlying Kafka resources and avoid resource leaks
 func (p *Protocol) Close(ctx context.Context) error {
-	if p.consumer != nil {
-		return p.consumer.Close()
+	p.closerMux.Lock()
+	defer p.closerMux.Unlock()
+	logger := cecontext.LoggerFrom(ctx)
+
+	if p.consumerCancel != nil {
+		p.consumerCancel()
 	}
-	if p.producer != nil {
+
+	if p.producer != nil && !p.producer.IsClosed() {
+		// Flush and close the producer and the events channel
+		for p.producer.Flush(10000) > 0 {
+			logger.Info("Still waiting to flush outstanding messages")
+		}
 		p.producer.Close()
 	}
-	close(p.producerDeliveryChan)
-	close(p.incoming)
 	return nil
 }

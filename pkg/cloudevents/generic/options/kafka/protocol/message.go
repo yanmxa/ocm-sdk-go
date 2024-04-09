@@ -1,3 +1,8 @@
+/*
+ Copyright 2023 The CloudEvents Authors
+ SPDX-License-Identifier: Apache-2.0
+*/
+
 package kafka_confluent
 
 import (
@@ -12,14 +17,11 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-//TODO: the implementation will be removed once the this pr is merged: https://github.com/cloudevents/sdk-go/pull/988
-
 const (
 	prefix         = "ce-"
-	contentTypeKey = "Content-Type"
+	contentTypeKey = "content-type"
 )
 
-// the following property will be added to the cloudevents extension by the receiver
 const (
 	KafkaOffsetKey    = "kafkaoffset"
 	KafkaPartitionKey = "kafkapartition"
@@ -44,7 +46,20 @@ var (
 	_ binding.MessageMetadataReader = (*Message)(nil)
 )
 
+// NewMessage returns a binding.Message that holds the provided kafka.Message.
+// The returned binding.Message *can* be read several times safely
+// This function *doesn't* guarantee that the returned binding.Message is always a kafka_sarama.Message instance
 func NewMessage(msg *kafka.Message) *Message {
+	if msg == nil {
+		panic("the kafka.Message shouldn't be nil")
+	}
+	if msg.TopicPartition.Topic == nil {
+		panic("the topic of kafka.Message shouldn't be nil")
+	}
+	if msg.TopicPartition.Partition < 0 || msg.TopicPartition.Offset < 0 {
+		panic("the partition or offset of the kafka.Message must be non-negative")
+	}
+
 	var contentType, contentVersion string
 	properties := make(map[string][]byte, len(msg.Headers)+3)
 	for _, header := range msg.Headers {

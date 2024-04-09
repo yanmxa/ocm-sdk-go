@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	confluent "github.com/cloudevents/sdk-go/protocol/kafka_confluent/v2"
 	"gopkg.in/yaml.v2"
-	kafka_confluent "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/kafka/protocol"
 	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/types"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -32,11 +32,15 @@ func NewKafkaOptions() *KafkaOptions {
 	}
 }
 
-func (o *KafkaOptions) GetCloudEventsClient(clientOpts ...kafka_confluent.Option) (cloudevents.Client, error) {
-	protocol, err := kafka_confluent.New(clientOpts...)
+func (o *KafkaOptions) GetCloudEventsClient(clientOpts ...confluent.Option) (cloudevents.Client, error) {
+	protocol, err := confluent.New(clientOpts...)
 	if err != nil {
 		return nil, err
 	}
+	// // 	// TODO: we haven't monitor the producer.Events() chan, enable it might cause memory leak.
+	// // enable it along with protocol.Close() to make sure the monitor is released
+	// _ = opts.ConfigMap.SetKey("go.delivery.reports", false)
+	// protocol.Events()
 	return cloudevents.NewClient(protocol)
 }
 
@@ -63,10 +67,6 @@ func BuildKafkaOptionsFromFlags(configPath string) (*KafkaOptions, error) {
 	if val == "" {
 		return nil, fmt.Errorf("bootstrap.servers is required")
 	}
-
-	// TODO: we haven't monitor the producer.Events() chan, enable it might cause memory leak.
-	// enable it along with protocol.Close() to make sure the monitor is released
-	opts.ConfigMap.SetKey("go.delivery.reports", false)
 
 	options := &KafkaOptions{
 		ConfigMap: opts.ConfigMap,

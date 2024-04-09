@@ -10,7 +10,7 @@ import (
 	cloudeventscontext "github.com/cloudevents/sdk-go/v2/context"
 	"github.com/stretchr/testify/assert"
 
-	kafka_confluent "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/kafka/protocol"
+	confluent "github.com/cloudevents/sdk-go/protocol/kafka_confluent/v2"
 	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/types"
 )
 
@@ -118,7 +118,7 @@ func TestSourceContext(t *testing.T) {
 			}
 
 			if c.expectedKey != "" {
-				assert.Equal(t, c.expectedKey, kafka_confluent.MessageKeyFrom(ctx))
+				assert.Equal(t, c.expectedKey, confluent.MessageKeyFrom(ctx))
 			}
 		})
 	}

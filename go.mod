@@ -4,8 +4,9 @@ go 1.21
 
 require (
 	github.com/bwmarrin/snowflake v0.3.0
+	github.com/cloudevents/sdk-go/protocol/kafka_confluent/v2 v2.0.0-20240326033350-5cd87eafb4b7
 	github.com/cloudevents/sdk-go/protocol/mqtt_paho/v2 v2.0.0-20231030012137-0836a524e995
-	github.com/cloudevents/sdk-go/v2 v2.14.0
+	github.com/cloudevents/sdk-go/v2 v2.15.3-0.20240329120647-e6a74efbacbf
 	github.com/confluentinc/confluent-kafka-go/v2 v2.3.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/eclipse/paho.golang v0.11.0

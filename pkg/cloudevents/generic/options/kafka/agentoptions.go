@@ -8,8 +8,8 @@ import (
 	cloudeventscontext "github.com/cloudevents/sdk-go/v2/context"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 
+	confluent "github.com/cloudevents/sdk-go/protocol/kafka_confluent/v2"
 	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options"
-	kafka_confluent "open-cluster-management.io/sdk-go/pkg/cloudevents/generic/options/kafka/protocol"
 	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/types"
 )
 
@@ -44,7 +44,7 @@ func (o *kafkaAgentOptions) WithContext(ctx context.Context, evtCtx cloudevents.
 
 	topicCtx := cloudeventscontext.WithTopic(ctx, o.Topics.AgentEvents)
 	if eventType.Action == types.ResyncRequestAction {
-		return kafka_confluent.WithMessageKey(topicCtx, o.clusterName), nil
+		return confluent.WithMessageKey(topicCtx, o.clusterName), nil
 	}
 
 	// agent publishes event to status topic to send the resource status from a specified cluster
@@ -54,15 +54,15 @@ func (o *kafkaAgentOptions) WithContext(ctx context.Context, evtCtx cloudevents.
 	}
 
 	messageKey := fmt.Sprintf("%s@%s", originalSource, o.clusterName)
-	return kafka_confluent.WithMessageKey(topicCtx, messageKey), nil
+	return confluent.WithMessageKey(topicCtx, messageKey), nil
 }
 
 func (o *kafkaAgentOptions) Client(ctx context.Context) (cloudevents.Client, error) {
 	c, err := o.GetCloudEventsClient(
-		kafka_confluent.WithConfigMap(o.ConfigMap),
-		kafka_confluent.WithReceiverTopics([]string{o.Topics.SourceEvents}),
-		kafka_confluent.WithSenderTopic(o.Topics.AgentEvents),
-		kafka_confluent.WithErrorHandler(func(ctx context.Context, err kafka.Error) {
+		confluent.WithConfigMap(o.ConfigMap),
+		confluent.WithReceiverTopics([]string{o.Topics.SourceEvents}),
+		confluent.WithSenderTopic(o.Topics.AgentEvents),
+		confluent.WithErrorHandler(func(ctx context.Context, err kafka.Error) {
 			o.errorChan <- err
 		}),
 	)

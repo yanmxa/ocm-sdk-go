@@ -6,30 +6,30 @@ import (
 
 	confluent "github.com/cloudevents/sdk-go/protocol/kafka_confluent/v2"
 	"gopkg.in/yaml.v2"
-	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/types"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 const (
-	defaultSpecTopic   = "spec"
-	defaultStatusTopic = "status"
+	// sourceEventsTopic is a topic for sources to publish their resource create/update/delete events, the first
+	// asterisk is a wildcard for source, the second asterisk is a wildcard for cluster.
+	sourceEventsTopic = "sourceevents.*.*"
+	// agentEventsTopic is a topic for agents to publish their resource status update events, the first
+	// asterisk is a wildcard for source, the second asterisk is a wildcard for cluster.
+	agentEventsTopic = "agentevents.*.*"
+	// sourceBroadcastTopic is for a source to publish its events to all agents, the asterisk is a wildcard for source.
+	sourceBroadcastTopic = "sourcebroadcast.*"
+	// agentBroadcastTopic is for a agent to publish its events to all sources, the asterisk is a wildcard for cluster.
+	agentBroadcastTopic = "agentbroadcast.*"
 )
 
 type KafkaOptions struct {
+	// TODO don't use this directly
+	// We may only need the necessary configurations, e.g. bootstrap.servers, ssl.ca.location, ssl.certificate.location and ssl.key.location
+	// We should also have a fixed group.id
 	// the configMap: https://github.com/confluentinc/librdkafka/blob/master/CONFIGURATION.md
 	ConfigMap *kafka.ConfigMap `json:"configs,omitempty" yaml:"configs,omitempty"`
-	Topics    *types.Topics    `json:"-" yaml:"-"`
-}
-
-func NewKafkaOptions() *KafkaOptions {
-	return &KafkaOptions{
-		Topics: &types.Topics{
-			SourceEvents: defaultSpecTopic,
-			AgentEvents:  defaultStatusTopic,
-		},
-	}
 }
 
 func (o *KafkaOptions) GetCloudEventsClient(clientOpts ...confluent.Option) (cloudevents.Client, error) {
@@ -70,10 +70,6 @@ func BuildKafkaOptionsFromFlags(configPath string) (*KafkaOptions, error) {
 
 	options := &KafkaOptions{
 		ConfigMap: opts.ConfigMap,
-		Topics: &types.Topics{
-			SourceEvents: defaultSpecTopic,
-			AgentEvents:  defaultStatusTopic,
-		},
 	}
 	return options, nil
 }

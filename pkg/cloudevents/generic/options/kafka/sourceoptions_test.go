@@ -58,9 +58,10 @@ func TestSourceContext(t *testing.T) {
 
 				evt := cloudevents.NewEvent()
 				evt.SetType(eventType.String())
+				evt.SetExtension("clustername", "")
 				return evt
 			}(),
-			expectedTopic: defaultSpecTopic,
+			expectedTopic: "sourcebroadcast.hub1",
 			expectedKey:   sourceID,
 		},
 		{
@@ -93,7 +94,7 @@ func TestSourceContext(t *testing.T) {
 				evt.SetExtension("clustername", "cluster1")
 				return evt
 			}(),
-			expectedTopic: defaultSpecTopic,
+			expectedTopic: "sourceevents.hub1.cluster1",
 			expectedKey:   fmt.Sprintf("%s@%s", sourceID, "cluster1"),
 		},
 	}

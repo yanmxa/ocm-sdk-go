@@ -65,9 +65,10 @@ func TestAgentContext(t *testing.T) {
 				evt := cloudevents.NewEvent()
 				evt.SetType(eventType.String())
 				evt.SetExtension("clustername", clusterName)
+				evt.SetExtension("originalsource", "")
 				return evt
 			}(),
-			expectedTopic: defaultStatusTopic,
+			expectedTopic: "agentbroadcast.cluster1",
 			expectedKey:   clusterName,
 		},
 		{
@@ -101,7 +102,7 @@ func TestAgentContext(t *testing.T) {
 				evt.SetExtension("originalsource", "hub1")
 				return evt
 			}(),
-			expectedTopic: defaultStatusTopic,
+			expectedTopic: "agentevents.hub1.cluster1",
 			expectedKey:   fmt.Sprintf("%s@%s", "hub1", clusterName),
 		},
 	}

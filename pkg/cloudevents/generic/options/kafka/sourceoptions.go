@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	cloudeventscontext "github.com/cloudevents/sdk-go/v2/context"
@@ -40,26 +41,42 @@ func (o *kafkaSourceOptions) WithContext(ctx context.Context,
 		return nil, err
 	}
 
-	topicCtx := cloudeventscontext.WithTopic(ctx, o.Topics.SourceEvents)
-	if eventType.Action == types.ResyncRequestAction {
-		return confluent.WithMessageKey(topicCtx, o.sourceID), nil
-	}
-
 	clusterName, err := evtCtx.GetExtension(types.ExtensionClusterName)
 	if err != nil {
 		return nil, err
 	}
 
-	// source publishes event to spec topic to send the resource spec to a specified cluster
+	if eventType.Action == types.ResyncRequestAction && clusterName == types.ClusterAll {
+		// source request to get resources status from all agents
+		topic := strings.Replace(sourceBroadcastTopic, "*", o.sourceID, 1)
+		return confluent.WithMessageKey(cloudeventscontext.WithTopic(ctx, topic), o.sourceID), nil
+	}
+
+	// source publishes event to source topic to send the resource spec to a specified cluster
 	messageKey := fmt.Sprintf("%s@%s", o.sourceID, clusterName)
-	return confluent.WithMessageKey(topicCtx, messageKey), nil
+	topic := strings.Replace(sourceEventsTopic, "*", o.sourceID, 1)
+	topic = strings.Replace(topic, "*", fmt.Sprintf("%s", clusterName), 1)
+	return confluent.WithMessageKey(cloudeventscontext.WithTopic(ctx, topic), messageKey), nil
 }
 
 func (o *kafkaSourceOptions) Client(ctx context.Context) (cloudevents.Client, error) {
+	cf := &kafka.ConfigMap{
+		"bootstrap.servers":        "kafka-kafka-tls-bootstrap-amq-streams.apps.server-foundation-sno-lite-msgxk.dev04.red-chesterfield.com:443",
+		"group.id":                 "myGroup",
+		"auto.offset.reset":        "earliest",
+		"security.protocol":        "SSL",
+		"ssl.ca.location":          "/Users/liuwei/go/src/github.com/stolostron/maestro-addon/cluster.ca.pem",
+		"ssl.certificate.location": "/Users/liuwei/go/src/github.com/stolostron/maestro-addon/admin-client.pem",
+		"ssl.key.location":         "/Users/liuwei/go/src/github.com/stolostron/maestro-addon/admin-client-key.pem",
+	}
+
 	c, err := o.GetCloudEventsClient(
-		confluent.WithConfigMap(o.ConfigMap),
-		confluent.WithReceiverTopics([]string{o.Topics.AgentEvents}),
-		confluent.WithSenderTopic(o.Topics.SourceEvents),
+		confluent.WithConfigMap(cf),
+		confluent.WithReceiverTopics([]string{
+			fmt.Sprintf("^%s", strings.Replace(agentEventsTopic, "*", o.sourceID, 1)),
+			fmt.Sprintf("^%s", agentBroadcastTopic),
+		}),
+		confluent.WithSenderTopic("sourceevents"),
 		confluent.WithErrorHandler(func(ctx context.Context, err kafka.Error) {
 			o.errorChan <- err
 		}),

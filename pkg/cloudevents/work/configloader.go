@@ -31,6 +31,7 @@ type ConfigLoader struct {
 //   - kube
 //   - mqtt
 //   - grpc
+//   - kafka
 func NewConfigLoader(configType, configPath string) *ConfigLoader {
 	return &ConfigLoader{
 		configType: configType,

@@ -72,6 +72,7 @@ type ClientHolderBuilder struct {
 //   - Kubeconfig (*rest.Config): builds a manifestwork client with kubeconfig
 //   - MQTTOptions (*mqtt.MQTTOptions): builds a manifestwork client based on cloudevents with MQTT
 //   - GRPCOptions (*grpc.GRPCOptions): builds a manifestwork client based on cloudevents with GRPC
+//   - KafkaOptions (*kafka.KafkaOptions): builds a manifestwork client based on cloudevents with Kafka
 //
 // TODO using a specified config instead of any
 func NewClientHolderBuilder(config any) *ClientHolderBuilder {

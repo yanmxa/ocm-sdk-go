@@ -8,7 +8,6 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/stretchr/testify/assert"
-	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/types"
 )
 
 func TestBuildKafkaOptionsFromFlags(t *testing.T) {
@@ -41,10 +40,6 @@ func TestBuildKafkaOptionsFromFlags(t *testing.T) {
 				ConfigMap: &kafka.ConfigMap{
 					"bootstrap.servers": "test",
 				},
-				Topics: &types.Topics{
-					SourceEvents: defaultSpecTopic,
-					AgentEvents:  defaultStatusTopic,
-				},
 			},
 		},
 		{
@@ -55,10 +50,6 @@ func TestBuildKafkaOptionsFromFlags(t *testing.T) {
 					"bootstrap.servers":  "test",
 					"enable.auto.commit": "true",
 					"group.id":           "testid",
-				},
-				Topics: &types.Topics{
-					SourceEvents: defaultSpecTopic,
-					AgentEvents:  defaultStatusTopic,
 				},
 			},
 		},

@@ -96,10 +96,6 @@ func TestLoadConfig(t *testing.T) {
 				ConfigMap: &kafka.ConfigMap{
 					"bootstrap.servers": "test",
 				},
-				Topics: &types.Topics{
-					SourceEvents: "spec",
-					AgentEvents:  "status",
-				},
 			},
 		},
 	}
